@@ -171,14 +171,15 @@
 .esm-button:hover { background: var(--esm-hover); }
 /* board.js applies filters as they change, so the Apply button is only needed without it. */
 .esm-filters[data-esm-auto] .esm-apply { display: none; }
-/* Export menu. A <details> element, so it opens without JavaScript. */
-.esm-export { position: relative; }
-.esm-header .esm-export { display: inline-block; margin-top: .9rem; }
-.esm-export-button { display: inline-flex; align-items: center; gap: 6px; list-style: none; }
-.esm-export-button::-webkit-details-marker { display: none; }
-.esm-export[open] .esm-export-button { background: var(--esm-hover); }
-.esm-export[open] .esm-export-button .esm-icon { transform: rotate(180deg); }
-.esm-export-menu {
+/* Menus: the status filter and Export. <details> elements, so they open without JavaScript. */
+.esm-menu { position: relative; }
+.esm-header .esm-menu { display: inline-block; margin-top: .9rem; }
+.esm-menu-button { display: inline-flex; align-items: center; gap: 6px; list-style: none; cursor: pointer; }
+.esm-menu-button::-webkit-details-marker { display: none; }
+.esm-button.esm-menu-button { font-weight: 650; }
+.esm-menu[open] > .esm-menu-button { background-color: var(--esm-hover); }
+.esm-menu[open] > .esm-menu-button .esm-icon { transform: rotate(180deg); }
+.esm-menu-panel {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
@@ -192,9 +193,11 @@
   background: var(--esm-paper);
   box-shadow: 0 6px 26px var(--esm-shadow);
 }
-.esm-header .esm-export-menu { right: auto; left: 0; }
-.esm-export-link { display: block; padding: 8px 10px; border-radius: 6px; color: var(--esm-ink); font-size: .875rem; text-decoration: none; }
-.esm-export-link:hover { background: var(--esm-hover); }
+.esm-status-menu .esm-menu-panel { right: auto; left: 0; width: max-content; min-width: 100%; }
+.esm-header .esm-menu-panel { right: auto; left: 0; }
+.esm-export-link, .esm-menu-option { display: flex; white-space: nowrap; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; color: var(--esm-ink); font-size: .875rem; text-decoration: none; cursor: pointer; }
+.esm-export-link:hover, .esm-menu-option:hover { background: var(--esm-hover); }
+.esm-menu-option input { width: 16px; height: 16px; margin: 0; accent-color: var(--esm-accent); }
 .esm-filter-results { margin: 0; padding: 0 17px 12px; color: var(--esm-muted); font-size: .875rem; }
 .esm-filter-results a, .esm-detail a { color: var(--esm-accent-ink); }
 
@@ -431,7 +434,8 @@
   .esm-header { margin-bottom: 1.1rem; }
   .esm-toolbar { flex-direction: column; align-items: stretch; padding: 12px; }
   .esm-search { flex: 1 1 100%; min-width: 0; }
-  .esm-select { flex: 1; }
+  .esm-select, .esm-status-menu { flex: 1; }
+  .esm-status-menu > .esm-select { display: flex; width: 100%; }
   .esm-board .esm-search input { width: 100%; min-width: 0; }
   .esm-filter-results { padding: 0 12px 12px; }
   .esm-scroll { overflow: visible; }

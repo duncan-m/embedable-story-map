@@ -528,3 +528,13 @@ stories:
     summary: One row per story with its activity, release, ID and title, safe to open in spreadsheets and importable into Miro and Lucidchart.
     sources:
       - docs/plans/export-to-external-tools.md#5-export-the-map-as-csv
+  - id: ESM-414
+    title: Choose several statuses in the filter
+    activity: explore
+    release: export
+    status: merged
+    summary: The status filter is a list of checkboxes with the active statuses ticked by default, so viewers can show any mix of statuses, including stalled stories, without an All option.
+    notes: The URL repeats status once per choice, and status=all and single-status links still work. view.filter.status becomes an array, which is a breaking change for hosts that read it.
+    sources:
+      - docs/story-map.md#blocked-and-cut-stories
+      - docs/ENGINEERING-OVERVIEW.md#filter-toolbar

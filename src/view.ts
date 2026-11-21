@@ -1,7 +1,7 @@
 import { filterStoryMapView, readStoryMapFilters } from "./filter.js";
 import type { StoryHistoryEvent, StoryLastEdit, StoryMapHistory } from "./history.js";
 import { defaultStalledAfterWeeks, type ReleaseImpact, type StoryMapDocument } from "./schema.js";
-import { customerStatus, isActiveStatus, storyStatuses, type StoryStatus } from "./status.js";
+import { customerStatus, isActiveStatus, storyStatuses, type StoryStatus, type StoryStatusFilter } from "./status.js";
 
 export interface StoryMapViewer {
   roles?: readonly string[];
@@ -79,8 +79,11 @@ export interface InternalStoryCard extends StoryCard {
 /** Present when the host has applied `filterStoryMapView`. The board shows its search toolbar only then. */
 export interface StoryMapFilterState {
   query?: string;
-  /** The status filter. Absent means the default: active stories only. `stalled` keeps stalled stories. */
-  status?: StoryStatus | "all" | "stalled";
+  /**
+   * The chosen statuses, in board order. Absent means the default: active stories
+   * for internal views, and every status for customers. `stalled` keeps stalled stories.
+   */
+  status?: StoryStatusFilter[];
   /** Only stories added or changed in this many days. */
   changedWithinDays?: number;
   /** Number of stories in the view before filtering. */

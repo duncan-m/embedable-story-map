@@ -1,6 +1,6 @@
 import { Fragment, useId, version } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { customerStoryStatuses, isActiveStatus, storyStatusLabels, storyStatuses, type StoryStatus } from "./status.js";
+import { activeStoryStatuses, customerStoryStatuses, isActiveStatus, storyStatusLabels, storyStatuses, type StoryStatus, type StoryStatusFilter } from "./status.js";
 import type { ReleaseImpact } from "./schema.js";
 import { storyMapAuthor, storyMapLicense, storyMapRepositoryUrl, storyMapVersion } from "./version.js";
 import type { InternalReleaseLabel, InternalStoryCard, StoryHistoryEntry, StoryMapRecentUpdates, StoryMapView } from "./view.js";
@@ -508,14 +508,14 @@ function withParam(href: string, name: string, value: string) {
 function ExportMenu({ href }: { href: string }) {
   const formats = [["vsdx", "Visio (.vsdx), for Lucidchart or Miro"], ["csv", "CSV"]] as const;
   return (
-    <details className="esm-export">
-      <summary className="esm-button esm-export-button">
+    <details className="esm-menu esm-export">
+      <summary className="esm-button esm-menu-button">
         Export
         <svg className="esm-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="m3 5 4 4 4-4" />
         </svg>
       </summary>
-      <ul className="esm-export-menu">
+      <ul className="esm-menu-panel">
         {formats.map(([format, label]) => {
           const target = withParam(href, "format", format);
           return <li key={format}><a className="esm-export-link" href={target} data-esm-export={target} download>{label}</a></li>;
@@ -553,9 +553,52 @@ function VersionFooter({ internal }: { internal: boolean }) {
   );
 }
 
-/** True when a filter narrows the board beyond the default of active stories. */
+/** True when a filter narrows the board. Choosing every status shows every story, so it does not count. */
 function isFiltering(filter: StoryMapView["filter"]) {
-  return !!(filter && (filter.query || (filter.status && filter.status !== "all") || filter.changedWithinDays));
+  const narrowsStatus = !!filter?.status && !storyStatuses.every(choice => filter.status!.includes(choice));
+  return !!(filter && (filter.query || narrowsStatus || filter.changedWithinDays));
+}
+
+const statusFilterLabels: Record<StoryStatusFilter, string> = { ...storyStatusLabels, stalled: "Stalled" };
+
+/** What the status button says: “Active” by default, “All statuses”, one or two names, or a count. */
+function statusSummary(status: readonly StoryStatusFilter[] | undefined, internal: boolean) {
+  if (!status) return internal ? "Active" : "All statuses";
+  if (storyStatuses.every(choice => status.includes(choice))) return "All statuses";
+  if (status.length <= 2) return status.map(choice => statusFilterLabels[choice]).join(", ");
+  return `${status.length} statuses`;
+}
+
+/**
+ * The status filter: a button that opens a list of checkboxes, one per status, plus
+ * Stalled when the view flags stalled stories. A `<details>` element opens it, so it
+ * works without JavaScript, and the form's Apply button submits it. board.js applies
+ * the choice when the menu closes.
+ */
+function StatusMenu({ status, internal, stalled, hintId }: {
+  status: readonly StoryStatusFilter[] | undefined;
+  internal: boolean;
+  stalled: boolean;
+  hintId: string;
+}) {
+  const choices: readonly StoryStatusFilter[] = internal ? [...storyStatuses, ...(stalled ? ["stalled" as const] : [])] : customerStoryStatuses;
+  const chosen = new Set<StoryStatusFilter>(status ?? (internal ? activeStoryStatuses : customerStoryStatuses));
+  return (
+    <details className="esm-menu esm-status-menu">
+      <summary className="esm-select esm-menu-button" data-esm-focus="status" aria-describedby={hintId}>
+        <span className="esm-visually-hidden">Status: </span>{statusSummary(status, internal)}
+      </summary>
+      <fieldset className="esm-menu-panel">
+        <legend className="esm-visually-hidden">Show stories with these statuses</legend>
+        {choices.map(choice => (
+          <label key={choice} className="esm-menu-option">
+            <input type="checkbox" name="status" value={choice} defaultChecked={chosen.has(choice)} />
+            {statusFilterLabels[choice]}
+          </label>
+        ))}
+      </fieldset>
+    </details>
+  );
 }
 
 function hiddenSummary({ blocked, cut }: { blocked: number; cut: number }) {
@@ -598,14 +641,7 @@ function FilterToolbar({ filter, shown, preservedParams, showChanged, internal, 
             <input type="search" name="q" placeholder="Search stories" aria-label="Search stories" maxLength={100} defaultValue={filter.query ?? ""} />
           </label>
           <span className="esm-visually-hidden" id={hintId} data-esm-filter-hint="" />
-          <select className="esm-select" name="status" aria-label="Filter by story status" aria-describedby={hintId} defaultValue={filter.status ?? ""}>
-            {internal ? <>
-              <option value="">Active</option>
-              <option value="all">All, including blocked and cut</option>
-            </> : <option value="">All statuses</option>}
-            {(internal ? storyStatuses : customerStoryStatuses).map(status => <option key={status} value={status}>{storyStatusLabels[status]}</option>)}
-            {internal && !!stalledAfterWeeks && <option value="stalled">{`Stalled: in progress over ${weeks(stalledAfterWeeks)}`}</option>}
-          </select>
+          <StatusMenu status={filter.status} internal={internal} stalled={!!stalledAfterWeeks} hintId={hintId} />
           {showChanged && (
             <select
               className="esm-select"

@@ -4,11 +4,11 @@
  *
  * The board works without it: the filter form is a plain GET form with an
  * **Apply** button. With it, changing a filter applies it straight away and the
- * Apply button is hidden. After the page reloads, focus returns to the filter
- * that was changed, so keyboard and screen reader users keep their place.
+ * Apply button is hidden; the status filter applies when its menu closes. After
+ * the page reloads, focus returns to the filter that was changed, so keyboard and
+ * screen reader users keep their place. Menus close on Escape or a click elsewhere.
  * It also remembers which release lanes the viewer collapsed, and adds them to
- * the board's export links so the downloaded file matches, and closes the
- * Export menu on Escape or a click elsewhere.
+ * the board's export links so the downloaded file matches.
  */
 
 const focusKey = "esm-filter-focus";
@@ -31,7 +31,9 @@ function restoreFocus(form: HTMLFormElement) {
     return;
   }
   const field = name ? form.elements.namedItem(name) : null;
-  if (field instanceof HTMLElement) field.focus();
+  // The status filter is a group of checkboxes, so focus returns to its menu button.
+  const target = field instanceof HTMLElement ? field : name ? form.querySelector<HTMLElement>(`[data-esm-focus="${name}"]`) : null;
+  target?.focus();
 }
 
 function submit(form: HTMLFormElement, field: HTMLInputElement | HTMLSelectElement) {
@@ -47,7 +49,7 @@ export function enhanceStoryMapFilters(root: ParentNode = document) {
     enhanced.add(form);
     form.dataset.esmAuto = "";
     const hint = form.querySelector<HTMLElement>("[data-esm-filter-hint]");
-    if (hint) hint.textContent = "The board updates as soon as you choose an option.";
+    if (hint) hint.textContent = "The board updates as soon as you choose an option. Status choices apply when you close the status list.";
     form.addEventListener("change", event => {
       if (event.target instanceof HTMLSelectElement) submit(form, event.target);
     });
@@ -132,9 +134,13 @@ export function enhanceStoryMapReleases(root: ParentNode = document) {
 
 const enhancedMenus = new WeakSet<Element>();
 
-/** Closes the board's Export menu on Escape, a click elsewhere, or after a choice. Safe to call more than once. */
-export function enhanceStoryMapExportMenu(root: ParentNode = document) {
-  for (const menu of root.querySelectorAll<HTMLDetailsElement>("details.esm-export")) {
+/**
+ * Closes the board's menus (the status filter and Export) on Escape or a click
+ * elsewhere, and the Export menu after a choice. When the status menu closes with
+ * a changed choice, it submits the filter form. Safe to call more than once.
+ */
+export function enhanceStoryMapMenus(root: ParentNode = document) {
+  for (const menu of root.querySelectorAll<HTMLDetailsElement>("details.esm-menu")) {
     if (enhancedMenus.has(menu)) continue;
     enhancedMenus.add(menu);
     const close = (focus: boolean) => {
@@ -151,13 +157,27 @@ export function enhanceStoryMapExportMenu(root: ParentNode = document) {
     document.addEventListener("click", event => {
       if (!(event.target instanceof Node) || !menu.contains(event.target)) close(false);
     });
+
+    const form = menu.closest("form");
+    if (!form || !menu.querySelector("input[type=checkbox]")) continue;
+    let changed = false;
+    menu.addEventListener("change", () => {
+      changed = true;
+    });
+    menu.addEventListener("toggle", () => {
+      if (menu.open || !changed) return;
+      changed = false;
+      remember("status");
+      if (typeof form.requestSubmit === "function") form.requestSubmit();
+      else form.submit();
+    });
   }
 }
 
 function enhance() {
   enhanceStoryMapFilters();
   enhanceStoryMapReleases();
-  enhanceStoryMapExportMenu();
+  enhanceStoryMapMenus();
 }
 
 if (typeof document !== "undefined") {

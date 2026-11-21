@@ -215,9 +215,18 @@ test("renders source-only engineering details after a JSON round trip", async ()
   assert.ok(panel.includes(story.sources[0]));
 });
 
+/** The status filter's choices as `value:checked` pairs, such as `planned:1`. Test-only. */
+const statusChoicesIn = html => [...html.matchAll(/<input type="checkbox" name="status"( checked="")? value="([^"]+)"\/>/g)].map(match => `${match[2]}:${match[1] ? 1 : 0}`);
+const statusSummaryIn = html => /<summary class="esm-select esm-menu-button"[^>]*><span class="esm-visually-hidden">Status: <\/span>([^<]*)<\/summary>/.exec(html)?.[1];
+
 test("reads only known filter parameters", () => {
-  assert.deepEqual(readStoryMapFilters(new URLSearchParams("q=%20price%20&status=shipped")), { query: "price", status: "shipped" });
+  assert.deepEqual(readStoryMapFilters(new URLSearchParams("q=%20price%20&status=shipped")), { query: "price", status: ["shipped"] });
   assert.deepEqual(readStoryMapFilters(new URLSearchParams("q=&status=done")), { query: undefined, status: undefined });
+  // Status repeats, once per choice, and comes back in board order without duplicates or unknown values.
+  assert.deepEqual(readStoryMapFilters(new URLSearchParams("status=stalled&status=cut&status=planned&status=cut&status=done")).status, ["planned", "cut", "stalled"]);
+  // Links from before the status filter took several choices still work.
+  assert.deepEqual(readStoryMapFilters(new URLSearchParams("status=all")).status, ["planned", "in-progress", "merged", "shipped", "blocked", "cut"]);
+  assert.equal(readStoryMapFilters(new URLSearchParams("status=")).status, undefined);
   assert.equal(readStoryMapFilters(new URLSearchParams(`q=${"x".repeat(500)}`)).query.length, 100);
 });
 
@@ -244,7 +253,9 @@ test("the filter toolbar submits a GET form and keeps host parameters", async ()
   assert.match(html, /<form class="esm-filters"[^>]* role="search"[^>]* method="get">/);
   assert.match(html, /<input type="hidden" name="as" value="engineer"\/>/);
   assert.match(html, /name="q"[^>]*value="estimate"/);
-  assert.match(html, /<option value="planned" selected="">Planned<\/option>/);
+  assert.match(html, /<summary class="esm-select esm-menu-button"[^>]*><span class="esm-visually-hidden">Status: <\/span>Planned<\/summary>/);
+  assert.match(html, /<input type="checkbox" name="status" checked="" value="planned"\/>Planned/);
+  assert.match(html, /<input type="checkbox" name="status" value="shipped"\/>Shipped/);
   assert.match(html, /Showing 3 of 5 stories\. <a href="\?as=engineer">Clear filters<\/a>/);
   assert.doesNotMatch(html.match(/<a href="\?as=engineer">/)[0], /target=/);
   assert.equal(cardsIn(html).length, 3);
@@ -1045,12 +1056,17 @@ test("blocked and cut stories are hidden by default and shown on request", async
   assert.deepEqual(filterStoryMapView(internal, { query: "duplicates manually" }).filter.hidden, { blocked: 0, cut: 1 });
   assert.equal(filterStoryMapView(getStoryMapForViewer(planningMap, engineer)).filter.hidden, undefined);
 
-  assert.equal(readStoryMapFilters(new URLSearchParams("status=all")).status, "all");
-  assert.equal(readStoryMapFilters(new URLSearchParams("status=cut")).status, "cut");
+  assert.deepEqual(readStoryMapFilters(new URLSearchParams("status=cut")).status, ["cut"]);
+  // Choosing exactly the default statuses is the default, so blocked and cut are still counted as hidden.
+  assert.equal(filterStoryMapView(internal, { status: ["shipped", "planned", "merged", "in-progress"] }).filter.status, undefined);
+  assert.deepEqual(ids({ status: ["planned", "cut"] }), internal.stories.filter(story => story.status === "planned" || story.status === "cut").map(story => story.id));
+  assert.ok(ids({ status: ["planned", "cut"] }).includes("FINANCE-202"));
 
   const html = await makeStoryMapResponse("/story-map?q=e", inactive, engineer, { preservedParams: { as: "engineer" } }).text();
-  assert.match(html, /<option value="" selected="">Active<\/option><option value="all">All, including blocked and cut<\/option>/);
-  assert.match(html, /<option value="blocked">Blocked<\/option><option value="cut">Cut<\/option>/);
+  // Active statuses are chosen by default, and there is no “All” choice.
+  assert.equal(statusSummaryIn(html), "Active");
+  assert.deepEqual(statusChoicesIn(html), ["planned:1", "in-progress:1", "merged:1", "shipped:1", "blocked:0", "cut:0"]);
+  assert.doesNotMatch(html, /value="all"/);
   assert.match(html, /Showing 3 of 5 stories\. 1 blocked and 1 cut hidden\. <a href="\?as=engineer&amp;q=e&amp;status=all">Show them<\/a> · <a href="\?as=engineer">Clear filters<\/a>/);
   assert.doesNotMatch(html, /Explore duplicate approval handling/);
 
@@ -1062,6 +1078,8 @@ test("blocked and cut stories are hidden by default and shown on request", async
 
   const all = await makeStoryMapResponse("/story-map?status=all", inactive, engineer).text();
   assert.equal(cardsIn(all).length, 5);
+  assert.equal(statusSummaryIn(all), "All statuses");
+  assert.deepEqual(statusChoicesIn(all), ["planned:1", "in-progress:1", "merged:1", "shipped:1", "blocked:1", "cut:1"]);
   assert.doesNotMatch(all, /esm-filter-results/);
   const cut = panelFor(all, "Explore duplicate approval handling");
   assert.match(cut, /<span class="esm-status" data-status="cut"><svg[^>]*><circle[^>]*><\/circle><path d="M3\.6 12\.4 12\.4 3\.6"><\/path><\/svg>Cut<\/span><p class="esm-status-reason">Finance will handle duplicates manually until volumes justify it\.<\/p>/);
@@ -1077,7 +1095,8 @@ test("customers never see blocked or cut stories", async () => {
   assert.deepEqual(customer.activities.map(activity => activity.title), ["Prepare an estimate", "Send for approval"]);
 
   const page = await makeStoryMapResponse("/story-map", inactive, regular).text();
-  assert.match(page, /<option value="" selected="">All statuses<\/option><option value="planned">Planned<\/option><option value="in-progress">In progress<\/option><option value="shipped">Shipped<\/option><\/select>/);
+  assert.equal(statusSummaryIn(page), "All statuses");
+  assert.deepEqual(statusChoicesIn(page), ["planned:1", "in-progress:1", "shipped:1"]);
   for (const target of ["/story-map?status=all", "/story-map?status=blocked", "/api/story-map?status=all"]) {
     const payload = await (await makeStoryMapResponse(target, inactive, regular)).text();
     assert.doesNotMatch(payload, /Track approved purchases|Finance updates|Track purchases|blocked|Waiting on the finance|statusReason| hidden\./i);
@@ -1331,11 +1350,13 @@ test("the stalled threshold is read from the map, can be overridden and turned o
 });
 
 test("the stalled filter keeps stalled stories and needs history", () => {
-  assert.equal(readStoryMapFilters(new URLSearchParams("status=stalled")).status, "stalled");
+  assert.deepEqual(readStoryMapFilters(new URLSearchParams("status=stalled")).status, ["stalled"]);
   const view = getStoryMapForViewer(stalledMap({ stalledAfterWeeks: 2 }), engineer, { history: stalledHistory, now: stalledNow });
   const stalled = filterStoryMapView(view, { status: "stalled" });
   assert.deepEqual(stalled.stories.map(story => story.id), ["BUILDER-101", "BUILDER-102"]);
-  assert.equal(stalled.filter.status, "stalled");
+  assert.deepEqual(stalled.filter.status, ["stalled"]);
+  // Stalled adds stalled stories to the other choices.
+  assert.deepEqual(filterStoryMapView(view, { status: ["planned", "stalled"] }).stories.map(story => story.id), view.stories.filter(story => story.status === "planned" || story.stalled).map(story => story.id));
   assert.equal(stalled.filter.hidden, undefined);
 
   // Without history, and for customers, the stalled filter falls back to the default.
@@ -1361,10 +1382,11 @@ test("the board flags stalled stories to internal viewers only", async () => {
   assert.match(panel, /<span>Stalled: in progress for 11 weeks\. Stories are flagged after 4 weeks\.<\/span>/);
   assert.match(panelFor(html, "Look up prices in the material catalogue"), /In progress since <time dateTime="2026-11-01T10:00:00Z">/);
   assert.doesNotMatch(panelFor(html, "Look up prices in the material catalogue"), /esm-stalled-note/);
-  assert.match(html, /<option value="stalled">Stalled: in progress over 4 weeks<\/option>/);
+  assert.match(html, /<input type="checkbox" name="status" value="stalled"\/>Stalled<\/label>/);
 
   const filtered = await makeStoryMapResponse("/story-map?status=stalled", current, engineer, options).text();
-  assert.match(filtered, /<option value="stalled" selected="">/);
+  assert.equal(statusSummaryIn(filtered), "Stalled");
+  assert.match(filtered, /<input type="checkbox" name="status" checked="" value="stalled"\/>Stalled/);
   assert.match(filtered, /Showing 1 of 5 stories\./);
   assert.deepEqual(cardsIn(filtered).map(card => /esm-card-id">([^<]+)/.exec(card)[1]), ["BUILDER-101"]);
 
@@ -1847,7 +1869,7 @@ test("merged stories are active and shown with their own status to internal view
 
   const html = await makeStoryMapResponse("/story-map", mergedMap, engineer).text();
   assert.match(cardsIn(html).find(card => card.includes("BUILDER-101")), /<span class="esm-status" data-status="merged"><svg[^>]*>[\s\S]*?<\/svg>Merged<\/span>/);
-  assert.match(html, /<option value="merged">Merged<\/option>/);
+  assert.match(html, /<input type="checkbox" name="status" checked="" value="merged"\/>Merged/);
   assert.match(releasePanel(html, "Builder workflow"), /0 of 3 stories shipped, 1 merged\./);
 });
 
@@ -1962,7 +1984,8 @@ test("the board renders the filter hint empty and marks the Apply button", () =>
   const html = renderToStaticMarkup(createElement(StoryMapBoard, { map: view }));
   const hintId = /<span class="esm-visually-hidden" id="([^"]+)" data-esm-filter-hint=""><\/span>/.exec(html)?.[1];
   assert.ok(hintId);
-  assert.match(html, new RegExp(`<select class="esm-select" name="status" aria-label="Filter by story status" aria-describedby="${hintId}"`));
+  assert.match(html, new RegExp(`<summary class="esm-select esm-menu-button" data-esm-focus="status" aria-describedby="${hintId}">`));
+  assert.match(html, /<fieldset class="esm-menu-panel"><legend class="esm-visually-hidden">Show stories with these statuses<\/legend>/);
   assert.match(html, /<button type="submit" class="esm-button esm-apply">Apply<\/button>/);
 });
 
@@ -2425,10 +2448,10 @@ test("the board links to the export for internal viewers only", () => {
   const history = { version: 1, generatedAt: "2026-11-20T08:00:00Z", complete: true, events: [], lastEdits: [{ storyId: map.stories[0].id, at: "2026-11-19T10:00:00Z", commit: "a".repeat(40) }] };
   const page = renderToStaticMarkup(createElement(StoryMapBoard, { map: getStoryMapPage(map, engineer, { history, searchParams: new URLSearchParams() }), exportHref: "/story-map/export" }));
   const form = /<form class="esm-filters".*?<\/form>/.exec(page)?.[0] ?? "";
-  assert.match(form, /name="changed".*<\/select>.*<details class="esm-export"><summary class="esm-button esm-export-button">Export<svg.*<\/summary><ul class="esm-export-menu"><li><a class="esm-export-link" href="\/story-map\/export\?format=vsdx"/);
-  assert.equal(page.match(/<details class="esm-export"/g).length, 1, "one Export button, not one in the header too");
+  assert.match(form, /name="changed".*<\/select>.*<details class="esm-menu esm-export"><summary class="esm-button esm-menu-button">Export<svg.*<\/summary><ul class="esm-menu-panel"><li><a class="esm-export-link" href="\/story-map\/export\?format=vsdx"/);
+  assert.equal(page.match(/<details class="esm-menu esm-export"/g).length, 1, "one Export button, not one in the header too");
   assert.doesNotMatch(/<header class="esm-header">.*?<\/header>/.exec(page)[0], /esm-export/);
-  assert.match(/<header class="esm-header">.*?<\/header>/.exec(internal)[0], /<details class="esm-export">/, "without the toolbar, the header has it");
+  assert.match(/<header class="esm-header">.*?<\/header>/.exec(internal)[0], /<details class="esm-menu esm-export">/, "without the toolbar, the header has it");
   const customerPage = renderToStaticMarkup(createElement(StoryMapBoard, { map: getStoryMapPage(map, regular, { searchParams: new URLSearchParams() }), exportHref: "/story-map/export" }));
   assert.doesNotMatch(customerPage, /esm-export/, "never in a customer toolbar");
 });
@@ -2471,4 +2494,61 @@ test("the example host serves the export to internal viewers", async () => {
 
   const page = await makeStoryMapResponse("/story-map", map, engineer, { canViewInternal: () => true, preservedParams: { as: "engineer" } }).text();
   assert.match(page, /href="\/story-map\/export\?as=engineer&amp;format=vsdx"/);
+});
+
+// --- Status filter with several choices ---
+
+test("board.js applies the status filter when its menu closes with a change", async t => {
+  class FakeNode {}
+  class FakeElement extends FakeNode {}
+  const storage = new Map();
+  const documentListeners = [];
+  const globals = {
+    Node: FakeNode,
+    Element: FakeElement,
+    HTMLElement: FakeElement,
+    HTMLInputElement: class {},
+    HTMLSelectElement: class {},
+    sessionStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
+    document: { readyState: "complete", querySelectorAll: () => [], addEventListener: (type, handler) => documentListeners.push(handler) },
+  };
+  const saved = Object.fromEntries(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  t.after(() => {
+    for (const [key, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  });
+
+  let submitted = 0;
+  const form = { requestSubmit: () => submitted++ };
+  const listeners = {};
+  const menu = Object.assign(new FakeElement(), {
+    open: false,
+    closest: () => form,
+    contains: target => target === menu,
+    querySelector: selector => selector === "summary" ? { focus() {} } : {},
+    addEventListener: (type, handler) => { listeners[type] = handler; },
+  });
+  const setOpen = open => { menu.open = open; listeners.toggle(); };
+  const { enhanceStoryMapMenus } = await import("auto-story-map/board.js");
+  enhanceStoryMapMenus({ querySelectorAll: () => [menu] });
+
+  setOpen(true);
+  setOpen(false);
+  assert.equal(submitted, 0, "closing without a change does not reload");
+
+  setOpen(true);
+  listeners.change();
+  assert.equal(submitted, 0, "ticking a box waits for the menu to close");
+  documentListeners[0]({ target: new FakeNode() });
+  assert.equal(menu.open, false, "a click elsewhere closes the menu");
+  listeners.toggle();
+  assert.equal(submitted, 1, "closing after a change applies it");
+  assert.equal(storage.get("esm-filter-focus"), "status", "focus returns to the status button after the reload");
+
+  setOpen(true);
+  listeners.keydown({ key: "Escape" });
+  assert.equal(menu.open, false, "Escape closes the menu");
 });

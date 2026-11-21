@@ -2,6 +2,9 @@ export const storyStatuses = ["planned", "in-progress", "merged", "shipped", "bl
 
 export type StoryStatus = (typeof storyStatuses)[number];
 
+/** A choice in the board's status filter: a status, or `stalled` for stories in progress for too long. */
+export type StoryStatusFilter = StoryStatus | "stalled";
+
 /** Statuses the board shows by default. Blocked and cut stories are hidden until a viewer asks for them. */
 export const activeStoryStatuses = ["planned", "in-progress", "merged", "shipped"] as const satisfies readonly StoryStatus[];
 
