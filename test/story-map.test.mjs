@@ -2420,6 +2420,17 @@ test("the board links to the export for internal viewers only", () => {
   assert.match(render(engineer, { exportHref: "/export" }), /href="\/export\?format=vsdx"/);
   assert.doesNotMatch(render(engineer), /esm-export/, "no links without exportHref");
   assert.doesNotMatch(render(regular, { exportHref: "/story-map/export" }), /esm-export|story-map\/export/, "never for customers");
+
+  // With the filter toolbar, the Export button sits in the filter form, after the Changed select.
+  const history = { version: 1, generatedAt: "2026-11-20T08:00:00Z", complete: true, events: [], lastEdits: [{ storyId: map.stories[0].id, at: "2026-11-19T10:00:00Z", commit: "a".repeat(40) }] };
+  const page = renderToStaticMarkup(createElement(StoryMapBoard, { map: getStoryMapPage(map, engineer, { history, searchParams: new URLSearchParams() }), exportHref: "/story-map/export" }));
+  const form = /<form class="esm-filters".*?<\/form>/.exec(page)?.[0] ?? "";
+  assert.match(form, /name="changed".*<\/select>.*<details class="esm-export"><summary class="esm-button esm-export-button">Export<svg.*<\/summary><ul class="esm-export-menu"><li><a class="esm-export-link" href="\/story-map\/export\?format=vsdx"/);
+  assert.equal(page.match(/<details class="esm-export"/g).length, 1, "one Export button, not one in the header too");
+  assert.doesNotMatch(/<header class="esm-header">.*?<\/header>/.exec(page)[0], /esm-export/);
+  assert.match(/<header class="esm-header">.*?<\/header>/.exec(internal)[0], /<details class="esm-export">/, "without the toolbar, the header has it");
+  const customerPage = renderToStaticMarkup(createElement(StoryMapBoard, { map: getStoryMapPage(map, regular, { searchParams: new URLSearchParams() }), exportHref: "/story-map/export" }));
+  assert.doesNotMatch(customerPage, /esm-export/, "never in a customer toolbar");
 });
 
 test("storyMapExportResponse builds a download for a host route", () => {

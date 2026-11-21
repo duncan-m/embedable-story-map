@@ -500,17 +500,28 @@ function withParam(href: string, name: string, value: string) {
   return `${path}${path.includes("?") ? "&" : "?"}${name}=${encodeURIComponent(value)}${fragment}`;
 }
 
-/** Links to the host's export route. board.js keeps `collapsed` in step with the lanes. */
-function ExportLinks({ href }: { href: string }) {
+/**
+ * An Export button that opens a menu of links to the host's export route. A
+ * `<details>` element opens it, so it works without JavaScript. board.js keeps
+ * `collapsed` in step with the lanes, and closes the menu on Escape or a click elsewhere.
+ */
+function ExportMenu({ href }: { href: string }) {
   const formats = [["vsdx", "Visio (.vsdx), for Lucidchart or Miro"], ["csv", "CSV"]] as const;
   return (
-    <p className="esm-export">
-      <span className="esm-export-label">Export</span>
-      {formats.map(([format, label]) => {
-        const target = withParam(href, "format", format);
-        return <a key={format} className="esm-export-link" href={target} data-esm-export={target} download>{label}</a>;
-      })}
-    </p>
+    <details className="esm-export">
+      <summary className="esm-button esm-export-button">
+        Export
+        <svg className="esm-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m3 5 4 4 4-4" />
+        </svg>
+      </summary>
+      <ul className="esm-export-menu">
+        {formats.map(([format, label]) => {
+          const target = withParam(href, "format", format);
+          return <li key={format}><a className="esm-export-link" href={target} data-esm-export={target} download>{label}</a></li>;
+        })}
+      </ul>
+    </details>
   );
 }
 
@@ -551,13 +562,15 @@ function hiddenSummary({ blocked, cut }: { blocked: number; cut: number }) {
   return [blocked && `${blocked} blocked`, cut && `${cut} cut`].filter(Boolean).join(" and ");
 }
 
-function FilterToolbar({ filter, shown, preservedParams, showChanged, internal, stalledAfterWeeks }: {
+function FilterToolbar({ filter, shown, preservedParams, showChanged, internal, stalledAfterWeeks, exportHref }: {
   filter: NonNullable<StoryMapView["filter"]>;
   shown: number;
   preservedParams?: Readonly<Record<string, string>>;
   showChanged: boolean;
   internal: boolean;
   stalledAfterWeeks?: number;
+  /** Only passed for internal views. */
+  exportHref?: string;
 }) {
   const filtering = isFiltering(filter);
   const clearHref = `?${new URLSearchParams(preservedParams ?? {})}`;
@@ -606,6 +619,7 @@ function FilterToolbar({ filter, shown, preservedParams, showChanged, internal, 
             </select>
           )}
           <button type="submit" className="esm-button esm-apply">Apply</button>
+          {exportHref && <ExportMenu href={exportHref} />}
         </form>
       </div>
       {(filtering || filter.hidden) && (
@@ -682,7 +696,8 @@ export function StoryMapBoard({
         {map.audience === "internal" && map.recentUpdates
           ? <RecentUpdates updates={map.recentUpdates} settings={settings} />
           : map.summary && <p className="esm-goal">{map.summary}</p>}
-        {internal && exportHref && <ExportLinks href={exportHref} />}
+        {/* Without the filter toolbar, the Export button goes in the header. */}
+        {internal && exportHref && !map.filter && <ExportMenu href={exportHref} />}
       </header>
       <div className="esm-frame">
         {map.filter && (
@@ -693,6 +708,7 @@ export function StoryMapBoard({
             showChanged={internal && !!map.history}
             internal={internal}
             stalledAfterWeeks={stalledAfterWeeks}
+            exportHref={internal ? exportHref : undefined}
           />
         )}
         {hideInactive && (

@@ -395,7 +395,7 @@ return new Response(storyMapToCsv(view), {
 
 ### Download from the board
 
-Give the board an export route, and internal viewers get **Export** links in its header: *Visio (.vsdx), for Lucidchart or Miro* and *CSV*. Customers never see them, even when the prop is set.
+Give the board an export route, and internal viewers get an **Export** button to the right of the filters. It opens a menu with *Visio (.vsdx), for Lucidchart or Miro* and *CSV*. Without the filter toolbar, the button goes under the board's title instead. Customers never see it, even when the prop is set. The menu is a `<details>` element, so it opens without JavaScript. With `board.js`, it also closes on Escape, on a click elsewhere, and after a choice.
 
 ```tsx
 <StoryMapBoard map={view} exportHref="/story-map/export" />

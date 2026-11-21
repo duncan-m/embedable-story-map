@@ -7,7 +7,8 @@
  * Apply button is hidden. After the page reloads, focus returns to the filter
  * that was changed, so keyboard and screen reader users keep their place.
  * It also remembers which release lanes the viewer collapsed, and adds them to
- * the board's export links so the downloaded file matches.
+ * the board's export links so the downloaded file matches, and closes the
+ * Export menu on Escape or a click elsewhere.
  */
 
 const focusKey = "esm-filter-focus";
@@ -129,9 +130,34 @@ export function enhanceStoryMapReleases(root: ParentNode = document) {
   }
 }
 
+const enhancedMenus = new WeakSet<Element>();
+
+/** Closes the board's Export menu on Escape, a click elsewhere, or after a choice. Safe to call more than once. */
+export function enhanceStoryMapExportMenu(root: ParentNode = document) {
+  for (const menu of root.querySelectorAll<HTMLDetailsElement>("details.esm-export")) {
+    if (enhancedMenus.has(menu)) continue;
+    enhancedMenus.add(menu);
+    const close = (focus: boolean) => {
+      if (!menu.open) return;
+      menu.open = false;
+      if (focus) menu.querySelector<HTMLElement>("summary")?.focus();
+    };
+    menu.addEventListener("keydown", event => {
+      if (event.key === "Escape") close(true);
+    });
+    menu.addEventListener("click", event => {
+      if (event.target instanceof Element && event.target.closest("a")) close(false);
+    });
+    document.addEventListener("click", event => {
+      if (!(event.target instanceof Node) || !menu.contains(event.target)) close(false);
+    });
+  }
+}
+
 function enhance() {
   enhanceStoryMapFilters();
   enhanceStoryMapReleases();
+  enhanceStoryMapExportMenu();
 }
 
 if (typeof document !== "undefined") {
